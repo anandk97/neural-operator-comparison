@@ -4,7 +4,9 @@
 
 Protocol (the same for every data-driven model): unit-Gaussian normalisation of inputs and outputs, relative L2
 loss, AdamW with a one-cycle learning-rate schedule, a fixed epoch budget. For the autoregressive Navier-Stokes task,
-models map the last 10 frames to the next one and are trained on the full 10-step rollout, as in FNO and Transolver.
+models map the last 10 frames to the next one. FNO and Transolver train on the full 10-step rollout; to fit a laptop
+GPU we train on one randomly placed 10 -> 1 window per trajectory per step (teacher forcing) and test on the full
+10-step rollout, which is the published metric.
 """
 
 import argparse
@@ -89,8 +91,13 @@ def main():
         for i in range(0, ntr, bs):
             idx = perm[i:i + bs]
             a, u, x = a_tr[idx].to(dev), u_tr[idx].to(dev), batch_x(xtr, idx)
-            if ar:
-                pred = rollout(model, a, x, task.rollout, na, nu)
+            if ar:  # one random window per trajectory: frames t0 .. t0+9 -> frame t0+10
+                full = torch.cat([a, u], -1).movedim(-1, 1)  # [B, 20, H, W]
+                start = torch.randint(0, task.rollout, (len(idx), 1), device=dev)
+                win = full[torch.arange(len(idx), device=dev)[:, None], start + torch.arange(task.in_steps + 1, device=dev)]
+                win = win.movedim(1, -1)
+                a, u = win[..., :task.in_steps], win[..., task.in_steps:]
+                pred = nu.decode(model(na.encode(a), x))
             else:
                 pred = nu.decode(model(na.encode(a), x))
             loss = rel_l2(pred, u).mean()

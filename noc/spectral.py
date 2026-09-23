@@ -45,11 +45,11 @@ class FNOWrap(nn.Module):
         kw = dict(n_modes=modes, in_channels=task.cin + task.d, out_channels=task.cout, hidden_channels=width,
                   n_layers=layers, positional_embedding=None, domain_padding=pad)
         if local:
-            # the local (DISCO) kernels are built for the shape they see, i.e. after symmetric domain padding
-            shape = tuple(n + 2 * round(pad * n) for n in task.shape) if pad else task.shape
-            self.net = LocalNO(default_in_shape=shape, **kw,
+            # the local integral (DISCO) kernels assume equal grid spacing along every axis, so the domain length
+            # is set proportional to the grid shape (this matters for the 221 x 51 airfoil mesh)
+            self.net = LocalNO(default_in_shape=task.shape, **kw,
                                conv_padding_mode="periodic" if task.periodic else "zeros",
-                               disco_layers=dim == 2, domain_length=[1.0] * dim)
+                               disco_layers=dim == 2, domain_length=[n / min(task.shape) for n in task.shape])
         else:
             self.net = FNO(**kw)
 
