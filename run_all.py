@@ -3,6 +3,7 @@
     uv run python run_all.py main      # every model on every task, 1000 training samples
     uv run python run_all.py scaling   # 1D tasks at 100 / 300 / 1000 samples
     uv run python run_all.py pinn      # PINN and PirateNet on 5 test instances per task
+    uv run python run_all.py eval      # noise / resolution / spectrum tests on every trained checkpoint
 """
 
 import subprocess
@@ -28,6 +29,10 @@ def queue(which):
                 for m in OPERATORS:
                     yield f"{task}/{m}_n{n}.json", ["train.py", "--task", task, "--model", m, "--ntrain", str(n),
                                                    "--epochs", str(EPOCHS[task])]
+    elif which == "eval":
+        for ckpt in sorted(RUNS.glob("*/*_n1000.pt")):
+            task, model = ckpt.parent.name, ckpt.stem.rsplit("_n", 1)[0]
+            yield f"{task}/{model}_eval.json", ["evaluate.py", "--task", task, "--model", model]
     elif which == "pinn":
         for task in ["burgers", "advection", "darcy"]:
             for m in ["pinn", "piratenet"]:

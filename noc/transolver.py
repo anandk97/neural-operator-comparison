@@ -58,7 +58,7 @@ class PhysicsAttention(nn.Module):
             w = gumbel_softmax(self.in_slice(x_mid), temp)
         else:
             if self.grid is not None:
-                H, W = self.grid
+                H, W = self.grid_shape
                 xg = x.reshape(B, H, W, C).permute(0, 3, 1, 2)
                 x_mid = self._heads(self.in_x(xg).permute(0, 2, 3, 1), B, N)
                 fx_mid = self._heads(self.in_fx(xg).permute(0, 2, 3, 1), B, N)
@@ -88,6 +88,13 @@ class Block(nn.Module):
         return x + self.mlp(self.ln2(x))
 
 
+def set_grid(model, shape):
+    """Structured-mesh Physics-Attention reshapes tokens to the grid; tell it the current grid shape."""
+    for m in model.modules():
+        if isinstance(m, PhysicsAttention):
+            m.grid_shape = shape
+
+
 class Transolver(nn.Module):
     def __init__(self, task, plus=False, width=128, layers=8, heads=8, slice_num=64):
         super().__init__()
@@ -108,6 +115,7 @@ class Transolver(nn.Module):
 
     def forward(self, a, x):
         B, shape = a.shape[0], a.shape[1:-1]
+        set_grid(self, tuple(shape))
         z = torch.cat([a, x.expand(B, *x.shape[1:])], -1).reshape(B, -1, a.shape[-1] + x.shape[-1])
         h = self.pre(z) + self.placeholder
         for blk in self.blocks:

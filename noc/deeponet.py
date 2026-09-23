@@ -9,8 +9,11 @@
                  Gaussian-RBF KANs.
 
 For 2D inputs on a grid or structured mesh the branch starts with a small CNN encoder, as in Lu et al.'s CMAME 2022
-comparison; for 1D and point-cloud inputs the branch reads the input at fixed sensor points. The encoder is the
-same across the three variants, so differences come from the part each paper changes.
+comparison; for 1D and point-cloud inputs the branch reads the input at fixed sensor points. On periodic domains the
+trunk sees the Fourier features cos/sin(2 pi k x), k = 1, 2, of each coordinate (Lu et al. 2022, Sec. 3.1.3), which
+makes the output exactly periodic; Shift-DeepONet applies them after its shift, so the shift still moves the basis.
+The encoder and trunk features are the same across the three variants, so differences come from the part each paper
+changes.
 """
 
 import torch
@@ -59,6 +62,8 @@ class DeepONetFamily(nn.Module):
     def __init__(self, task, variant="deeponet", p=128, width=128, depth=4, sensors=256):
         super().__init__()
         self.variant, self.p, self.cout, self.d = variant, p, task.cout, task.d
+        self.periodic = task.periodic
+        dt = 4 * self.d if self.periodic else self.d  # trunk input width
         if task.kind in ("grid2d", "mesh2d"):
             self.enc = CNNEncoder(task.cin, out=width)
             enc_out = width
@@ -69,10 +74,10 @@ class DeepONetFamily(nn.Module):
         hidden = [width] * (depth - 1)
         if variant == "deepokan":
             self.branch = kan_mlp([enc_out, *hidden, p * self.cout], kind="rbf")
-            self.trunk = kan_mlp([self.d, *hidden, p * self.cout], kind="rbf")
+            self.trunk = kan_mlp([dt, *hidden, p * self.cout], kind="rbf")
         else:
             self.branch = mlp([enc_out, *hidden, p * self.cout])
-            self.trunk = nn.Sequential(mlp([self.d, *hidden, p * self.cout]), nn.GELU())
+            self.trunk = nn.Sequential(mlp([dt, *hidden, p * self.cout]), nn.GELU())
         if variant == "shift":
             # A_k(a) (d x d) and gamma_k(a) (d) for every basis function k, from the same encoded input.
             self.scale = mlp([enc_out, width, p * self.d * self.d])
@@ -80,7 +85,7 @@ class DeepONetFamily(nn.Module):
             # With per-basis shifts each basis function needs its own trunk evaluation; a grouped trunk
             # (one small MLP per basis function, evaluated in parallel) keeps that affordable.
             tw = 32
-            self.t_w1 = nn.Parameter(torch.randn(p, self.d, tw) / self.d ** 0.5)
+            self.t_w1 = nn.Parameter(torch.randn(p, dt, tw) / dt ** 0.5)
             self.t_b1 = nn.Parameter(torch.zeros(p, tw))
             self.t_w2 = nn.Parameter(torch.randn(p, tw, tw) / tw ** 0.5)
             self.t_b2 = nn.Parameter(torch.zeros(p, tw))
@@ -88,14 +93,21 @@ class DeepONetFamily(nn.Module):
             del self.trunk
         self.b0 = nn.Parameter(torch.zeros(self.cout))
 
+    def features(self, y):
+        if not self.periodic:
+            return y
+        w = 2 * torch.pi * y
+        return torch.cat([torch.cos(w), torch.sin(w), torch.cos(2 * w), torch.sin(2 * w)], -1)
+
     def grouped_trunk(self, y):  # y: [B, P, p, d] -> [B, P, p, cout]
+        y = self.features(y)
         h = torch.nn.functional.gelu(torch.einsum("bnkd,kdh->bnkh", y, self.t_w1) + self.t_b1)
         h = torch.nn.functional.gelu(torch.einsum("bnkh,khg->bnkg", h, self.t_w2) + self.t_b2)
         return torch.einsum("bnkg,kgc->bnkc", h, self.t_w3)
 
     def forward(self, a, x):
         B = a.shape[0]
-        shape = a.shape[1:-1]
+        shape = x.shape[1:-1]  # outputs live wherever the trunk is queried, which need not be the input grid
         e = self.enc(a)
         beta = self.branch(e).view(B, 1, self.p, self.cout)
         y = x.expand(B, *x.shape[1:]).reshape(B, -1, self.d)  # [B, P, d]
@@ -108,6 +120,6 @@ class DeepONetFamily(nn.Module):
                              else self.grouped_trunk(zc) for zc in z.split(2048, 1)], 1)
         else:
             trunk = (lambda t: checkpoint(self.trunk, t, use_reentrant=False)) if self.training else self.trunk
-            tau = trunk(y).view(B, y.shape[1], self.p, self.cout)
+            tau = trunk(self.features(y)).view(B, y.shape[1], self.p, self.cout)
         out = (beta * tau).sum(2) / self.p ** 0.5 + self.b0
         return out.view(B, *shape, self.cout)
