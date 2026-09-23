@@ -98,6 +98,9 @@ def main():
 
     pred = predict(model, task, task.a_test, xte, na, nu)
     res["clean"] = rel_l2(pred, task.u_test)
+    B = pred.shape[0]  # median relative L1, the metric Lanthaler et al. report for discontinuous problems
+    l1 = (pred - task.u_test).reshape(B, -1).abs().sum(1) / task.u_test.reshape(B, -1).abs().sum(1)
+    res["rel_l1_median"] = l1.median().item()
     res["spectrum"] = spectrum(pred, task.u_test, task)
 
     # a few samples for plots, downsampled
