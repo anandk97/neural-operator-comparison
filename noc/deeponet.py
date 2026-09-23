@@ -78,6 +78,10 @@ class DeepONetFamily(nn.Module):
         else:
             self.branch = mlp([enc_out, *hidden, p * self.cout])
             self.trunk = nn.Sequential(mlp([dt, *hidden, p * self.cout]), nn.GELU())
+        if variant == "shift_shared":
+            # As in Lanthaler et al.: one shared trunk tau: R^d -> R^p; basis k is its k-th output at A_k y + gamma_k.
+            self.scale = mlp([enc_out, width, p * self.d * self.d])
+            self.shift = mlp([enc_out, width, p * self.d])
         if variant == "shift":
             # A_k(a) (d x d) and gamma_k(a) (d) for every basis function k, from the same encoded input.
             self.scale = mlp([enc_out, width, p * self.d * self.d])
@@ -111,7 +115,19 @@ class DeepONetFamily(nn.Module):
         e = self.enc(a)
         beta = self.branch(e).view(B, 1, self.p, self.cout)
         y = x.expand(B, *x.shape[1:]).reshape(B, -1, self.d)  # [B, P, d]
-        if self.variant == "shift":
+        if self.variant == "shift_shared":
+            A = self.scale(e).view(B, self.p, self.d, self.d) + torch.eye(self.d, device=a.device)
+            g = self.shift(e).view(B, 1, self.p, self.d)
+            z = torch.einsum("bkij,bnj->bnki", A, y) + g  # [B, P, p, d]
+            k = torch.arange(self.p, device=a.device)
+
+            def diag_trunk(zc):  # evaluate the shared trunk at every shifted point, keep output k for basis k
+                t = self.trunk(self.features(zc)).view(*zc.shape[:3], self.p, self.cout)
+                return t[:, :, k, k]
+
+            tau = torch.cat([checkpoint(diag_trunk, zc, use_reentrant=False) if self.training else diag_trunk(zc)
+                             for zc in z.split(512, 1)], 1)
+        elif self.variant == "shift":
             A = self.scale(e).view(B, 1, self.p, self.d, self.d) + torch.eye(self.d, device=a.device)
             g = self.shift(e).view(B, 1, self.p, self.d)
             z = torch.einsum("bkij,bnj->bnki", A[:, 0], y) + g  # [B, P, p, d]

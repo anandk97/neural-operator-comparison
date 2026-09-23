@@ -23,6 +23,8 @@ def build(name, task):
         return DeepONetFamily(task, "deeponet")
     if name == "shift_deeponet":
         return DeepONetFamily(task, "shift")
+    if name == "shift_deeponet_shared":  # ablation: Lanthaler et al.'s shared-trunk form
+        return DeepONetFamily(task, "shift_shared")
     if name == "deepokan":
         return DeepONetFamily(task, "deepokan")
     if name == "fno":
