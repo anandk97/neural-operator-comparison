@@ -1,0 +1,28 @@
+[project]
+name = "neural-operator-comparison"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "numpy>=2.5",
+    "scipy>=1.18",
+    "torch>=2.14.0",
+    "h5py",
+    "gdown",
+    "neuraloperator",
+    "requests",
+    "matplotlib",
+    "pyyaml",
+    "tqdm",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu130" }
+
+[tool.uv]
+package = false
+
