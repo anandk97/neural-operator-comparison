@@ -89,9 +89,10 @@ def burgers(ntrain=1000, ntest=200, sub=8, **_):
 def advection(ntrain=1000, ntest=200, n=1024, T=0.5, seed=0, **_):
     """u_t + u_x = 0 on the periodic unit interval, so u(x, T) = u0(x - T) exactly.
 
-    Initial data are square waves h * 1{|x - c| < w/2} with random height, centre and width. This is the setting that
-    Lanthaler et al. (2023) use to show that any operator with a linear reconstruction, such as DeepONet, needs many
-    basis functions for transported discontinuities (slow Kolmogorov n-width decay).
+    Initial data are square waves h * 1{|x - c| < w/2} with h in [0.2, 0.8] and w in [0.05, 0.3] (Lanthaler et al.'s
+    ranges) and centre c uniform on [0, 1). Lanthaler et al. (2023) use this setting to show that any operator with a
+    linear reconstruction, such as DeepONet, needs many basis functions for transported discontinuities (slow
+    Kolmogorov n-width decay).
     """
     rng = np.random.default_rng(seed)
     N = ntrain + ntest
