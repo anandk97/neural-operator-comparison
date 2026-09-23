@@ -31,6 +31,22 @@ def rnd(v, n=5):
     return v
 
 
+def pre_fix(task, model):
+    """DeepONet-family runs on periodic tasks trained before the periodic trunk features were added (the trunk's
+    first layer then reads the raw coordinate). These are shown as provisional until re-run."""
+    if model not in ("deeponet", "shift_deeponet", "deepokan") or task not in ("burgers", "advection", "ns"):
+        return False
+    import torch
+
+    ck = RUNS / task / f"{model}_n1000.pt"
+    if not ck.exists():
+        return False
+    sd = torch.load(ck, map_location="cpu", weights_only=False)
+    fan_in = {"deeponet": lambda: sd["trunk.0.0.weight"].shape[1], "shift_deeponet": lambda: sd["t_w1"].shape[1],
+              "deepokan": lambda: sd["trunk.0.norm.weight"].shape[0]}[model]()
+    return fan_in == (2 if task == "ns" else 1)
+
+
 def main():
     data = {"tasks": TASKS, "models": MODELS, "published": PUBLISHED, "main": {}, "scaling": {}, "eval": {},
             "pinn": {}, "curves": {}}
@@ -41,7 +57,7 @@ def main():
                 r = json.loads(f.read_text())
                 data["main"].setdefault(t, {})[m] = {
                     "err": r["test_rel_l2"], "params": r["params"], "train_min": r["train_seconds"] / 60,
-                    "infer_ms": r["infer_ms_per_sample"], "epochs": r["epochs"]}
+                    "infer_ms": r["infer_ms_per_sample"], "epochs": r["epochs"], "provisional": pre_fix(t, m)}
                 h = r["history"]
                 st = max(1, len(h) // 60)
                 data["curves"].setdefault(t, {})[m] = h[::st]
@@ -63,6 +79,18 @@ def main():
         for m in MODELS:  # scaling curves include the 1000-sample point
             if t in data["scaling"] and m in data["scaling"][t] and m in data["main"].get(t, {}):
                 data["scaling"][t][m][1000] = data["main"][t][m]["err"]
+    log = Path(__file__).parent / "logs" / "main.log"
+    running = None
+    if log.exists():
+        starts = [ln.split() for ln in log.read_text(errors="ignore").splitlines() if ln.startswith(">> train.py")]
+        if starts:
+            a = starts[-1]
+            t, m = a[a.index("--task") + 1], a[a.index("--model") + 1]
+            if m not in data["main"].get(t, {}):
+                running = [t, m]
+    from datetime import datetime
+
+    data["status"] = {"running": running, "updated": datetime.now().strftime("%Y-%m-%d %H:%M")}
     OUT.parent.mkdir(exist_ok=True)
     OUT.write_text(json.dumps(rnd(data), separators=(",", ":")))
     print(f"{OUT} {OUT.stat().st_size / 1e3:.0f} kB")
