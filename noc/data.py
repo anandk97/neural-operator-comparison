@@ -4,7 +4,7 @@ Every task returns tensors shaped [N, *S, C], where S is the spatial layout (a g
 list). Coordinates are shaped [N, *S, d], either shared across samples or, for meshes, one set per sample. Splits and
 resolutions follow the papers that report published numbers for each task, so our numbers can sit next to theirs.
 
-  burgers     FNO (Li et al., ICLR 2021)          viscous Burgers, nu = 0.1, u0 -> u(t=1), periodic, smooth
+  burgers     FNO (Li et al., ICLR 2021)          viscous Burgers, nu = 0.1 on a 2 pi-periodic domain, u0 -> u(t=1), smooth
   advection   Lanthaler et al. (ICLR 2023) style  linear advection of random square waves, u0 -> u(t=0.5)
   darcy       FNO / Transolver                    piecewise-constant coefficient -> pressure, 85 x 85
   ns          FNO / Transolver                    2D vorticity, nu = 1e-5, 10 frames -> next 10, 64 x 64

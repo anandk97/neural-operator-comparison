@@ -2,7 +2,7 @@
 
     uv run python run_all.py main      # every model on every task, 1000 training samples
     uv run python run_all.py scaling   # 1D tasks at 100 / 300 / 1000 samples
-    uv run python run_all.py pinn      # PINN and PirateNet on 5 test instances per task
+    uv run python run_all.py pinn      # PINN and PirateNet on 3 test instances per task, 10k steps each
     uv run python run_all.py ablation  # Shift-DeepONet with Lanthaler et al.'s shared trunk, on the 1D tasks
     uv run python run_all.py eval      # noise / resolution / spectrum tests on every trained checkpoint
 """
@@ -41,7 +41,8 @@ def queue(which):
     elif which == "pinn":
         for task in ["burgers", "advection", "darcy"]:
             for m in ["pinn", "piratenet"]:
-                yield f"{task}/{m}_instances.json", ["pinn.py", "--task", task, "--model", m]
+                yield f"{task}/{m}_instances.json", ["pinn.py", "--task", task, "--model", m, "--instances", "3",
+                                                       "--iters", "10000"]
 
 
 if __name__ == "__main__":

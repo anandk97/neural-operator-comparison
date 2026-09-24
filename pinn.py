@@ -3,13 +3,15 @@
   PINN       Raissi, Perdikaris & Karniadakis, J. Comput. Phys. 2019. tanh MLP, fixed loss weights, Adam.
   PirateNet  Wang, Li, Chen & Perdikaris, JMLR 2024. Random Fourier features, residual blocks with gated
              "adaptive" skips initialised to identity (alpha = 0), physics-informed initialisation of the last layer
-             by least squares on the initial/boundary data, and gradient-norm loss balancing (Wang et al. 2023).
+             by least squares on the initial/boundary data, gradient-norm loss balancing, and causal weighting of the
+             residual in time (Wang, Sankaran & Perdikaris, CMAME 2024), which the PirateNet paper trains with.
              Written from the paper; the reference implementation (jaxpi) is in JAX.
 
 These are not operators: every new input function needs a new optimisation. We compare them per instance against
 the operators, reporting error and wall-clock time, on the three tasks whose PDE is simple to write down:
 
-  burgers    u_t + u u_x = 0.1 u_xx, periodic on [0, 1), t in [0, 1]
+  burgers    u_t + u u_x = 0.1 u_xx on the 2 pi-periodic domain, t in [0, 1] (checked against the FNO data by a
+             spectral solve). Written on [0, 1): u_t + u u_x / (2 pi) = 0.1 u_xx / (2 pi)^2
   advection  u_t + u_x = 0, periodic, t in [0, 0.5], square-wave initial data
   darcy      -div(a grad u) = 1 on (0, 1)^2, u = 0 on the boundary. Written in mixed form (flux q = a grad u) so the
              piecewise-constant coefficient is never differentiated.
@@ -136,7 +138,7 @@ def problem(task, i):
             if task == "advection":
                 return [vt + vx]
             vxx = grad(vx, z)[:, :1]
-            return [vt + v * vx - 0.1 * vxx]
+            return [vt + v * vx / (2 * math.pi) - 0.1 * vxx / (2 * math.pi) ** 2]
 
         def sample(m):
             return torch.stack([torch.rand(m), tf * torch.rand(m)], 1)
@@ -191,9 +193,21 @@ def solve(task, model, i, iters, seed=0):
             return 16 * dist * out[:, :1]
         return out[:, :1]
 
+    causal = model == "piratenet" and task != "darcy"
+    M, eps = 32, 1.0  # time chunks and causality tolerance
+
     for it in range(iters):
         z = sample(n_res).to(dev)
-        losses = [(r ** 2).mean() for r in residual(net, z)]
+        if causal:  # later times only count once earlier times are resolved
+            tf = 1.0 if task == "burgers" else 0.5
+            z = z[z[:, 1].argsort()]
+            chunk = (z[:, 1] / tf * M).long().clamp(max=M - 1)
+            r2 = residual(net, z)[0].squeeze(1) ** 2
+            Lc = torch.zeros(M, device=dev).index_add_(0, chunk, r2) / torch.bincount(chunk, minlength=M).clamp(min=1)
+            wc = torch.exp(-eps * torch.cumsum(torch.cat([Lc.new_zeros(1), Lc[:-1]]), 0)).detach()
+            losses = [(wc * Lc).mean()]
+        else:
+            losses = [(r ** 2).mean() for r in residual(net, z)]
         if zd is not None:
             losses.append(((net(zd) - vd) ** 2).mean())
         if model == "piratenet" and it % 1000 == 0:  # gradient-norm loss balancing
