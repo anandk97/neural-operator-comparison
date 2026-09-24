@@ -71,6 +71,7 @@ def main():
                 sp = e["spectrum"]
                 kmax = min(len(sp["k"]), 128)
                 e["spectrum"] = {k: v[:kmax] for k, v in sp.items()}
+                e.pop("samples", None)  # not shown on the page yet; keeps the data file small
                 data["eval"].setdefault(t, {})[m] = e
         for m in ("pinn", "piratenet"):
             f = RUNS / t / f"{m}_instances.json"
