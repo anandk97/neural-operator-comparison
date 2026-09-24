@@ -101,10 +101,14 @@ class PirateNet(nn.Module):
 
     @torch.no_grad()
     def physics_init(self, z, target):
-        """Least-squares fit of the last layer to known data (initial or boundary values)."""
+        """Least-squares fit of the last layer to known data (initial or boundary values). A small ridge penalty keeps
+        the fit well-conditioned: an exact interpolant of the initial data has huge weights that blow up for t > 0."""
         F = self.features(z)
-        F1 = torch.cat([F, torch.ones_like(F[:, :1])], 1)
-        sol = torch.linalg.lstsq(F1.cpu(), target.cpu()).solution.to(z.device)
+        F1 = torch.cat([F, torch.ones_like(F[:, :1])], 1).double()
+        G = F1.T @ F1
+        lam = 1e-3 * G.diagonal().mean()
+        sol = torch.linalg.solve(G + lam * torch.eye(G.shape[0], device=G.device, dtype=G.dtype),
+                                 F1.T @ target.double()).float()
         self.head.weight.copy_(sol[:-1].T)
         self.head.bias.copy_(sol[-1])
 
