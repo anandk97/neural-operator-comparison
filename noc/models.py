@@ -33,8 +33,10 @@ def build(name, task):
         return FNOWrap(task, local=True)
     if name == "kano":
         return KANOWrap(task)
+    # the authors' configurations use the unified positional encoding on Darcy and Navier-Stokes only
+    upos = task.name in ("darcy", "ns")
     if name == "transolver":
-        return Transolver(task)
+        return Transolver(task, unified_pos=upos)
     if name == "transolver_pp":
-        return Transolver(task, plus=True)
+        return Transolver(task, plus=True, unified_pos=upos)
     raise KeyError(name)

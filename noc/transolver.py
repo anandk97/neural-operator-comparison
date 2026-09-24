@@ -96,10 +96,18 @@ def set_grid(model, shape):
 
 
 class Transolver(nn.Module):
-    def __init__(self, task, plus=False, width=128, layers=8, heads=8, slice_num=64):
+    """unified_pos: replace raw coordinates with distances to a ref x ref grid of reference points, as the authors'
+    Darcy and Navier-Stokes configurations do (--unified_pos 1 --ref 8)."""
+
+    def __init__(self, task, plus=False, width=128, layers=8, heads=8, slice_num=64, unified_pos=False, ref=8):
         super().__init__()
         grid = task.shape if (task.kind in ("grid2d", "mesh2d") and not plus) else None
-        self.pre = nn.Sequential(nn.Linear(task.cin + task.d, 2 * width), nn.GELU(), nn.Linear(2 * width, width))
+        self.unified_pos = unified_pos
+        if unified_pos:
+            g = torch.linspace(0, 1, ref)
+            self.register_buffer("refs", torch.stack(torch.meshgrid(g, g, indexing="ij"), -1).reshape(-1, 2))
+        pos_dim = ref * ref if unified_pos else task.d
+        self.pre = nn.Sequential(nn.Linear(task.cin + pos_dim, 2 * width), nn.GELU(), nn.Linear(2 * width, width))
         self.placeholder = nn.Parameter(torch.rand(width) / width)
         self.blocks = nn.ModuleList([Block(width, heads, slice_num, plus, grid) for _ in range(layers)])
         self.ln = nn.LayerNorm(width)
@@ -116,6 +124,9 @@ class Transolver(nn.Module):
     def forward(self, a, x):
         B, shape = a.shape[0], a.shape[1:-1]
         set_grid(self, tuple(shape))
+        if self.unified_pos:
+            x = torch.cdist(x.reshape(x.shape[0], -1, x.shape[-1]), self.refs[None].expand(x.shape[0], -1, -1))
+            x = x.view(x.shape[0], *shape, -1)
         z = torch.cat([a, x.expand(B, *x.shape[1:])], -1).reshape(B, -1, a.shape[-1] + x.shape[-1])
         h = self.pre(z) + self.placeholder
         for blk in self.blocks:
