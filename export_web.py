@@ -49,7 +49,7 @@ def pre_fix(task, model):
 
 def main():
     data = {"tasks": TASKS, "models": MODELS, "published": PUBLISHED, "main": {}, "scaling": {}, "eval": {},
-            "pinn": {}, "curves": {}}
+            "pinn": {}, "curves": {}, "examples": {}}
     for t in TASKS:
         for m in MODELS:
             f = RUNS / t / f"{m}_n1000.json"
@@ -71,7 +71,16 @@ def main():
                 sp = e["spectrum"]
                 kmax = min(len(sp["k"]), 128)
                 e["spectrum"] = {k: v[:kmax] for k, v in sp.items()}
-                e.pop("samples", None)  # not shown on the page yet; keeps the data file small
+                smp = e.pop("samples", None)
+                if smp and t in ("burgers", "advection", "darcy", "ns"):
+                    two_d = t in ("darcy", "ns")
+                    down = (lambda a: [row[::2] for row in a[::2]]) if two_d else (lambda a: a)
+                    ex = data["examples"].setdefault(t, {"pred": {}})
+                    ex["truth"] = [down(a) for a in smp["truth"][:2]]
+                    ex["input"] = [down(a) for a in smp["input"][:2]]
+                    if "x" in smp:
+                        ex["x"] = smp["x"]
+                    ex["pred"][m] = [down(a) for a in smp["pred"][:2]]
                 data["eval"].setdefault(t, {})[m] = e
         for m in ("pinn", "piratenet"):
             f = RUNS / t / f"{m}_instances.json"
@@ -93,7 +102,10 @@ def main():
 
     data["status"] = {"running": running, "updated": datetime.now().strftime("%Y-%m-%d %H:%M")}
     OUT.parent.mkdir(exist_ok=True)
-    OUT.write_text(json.dumps(rnd(data), separators=(",", ":")))
+    examples = rnd(data.pop("examples"), 3)  # plotting only needs 3 significant figures
+    data = rnd(data)
+    data["examples"] = examples
+    OUT.write_text(json.dumps(data, separators=(",", ":")))
     print(f"{OUT} {OUT.stat().st_size / 1e3:.0f} kB")
 
 
