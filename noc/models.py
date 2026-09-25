@@ -16,7 +16,8 @@ FAMILIES = {
 GRID_ONLY = {"fno", "local_fno", "kano"}
 
 
-def build(name, task):
+def build(name, task, **kw):
+    """kw: architecture overrides (e.g. width, layers, slice_num for the transformers)."""
     if name in GRID_ONLY and task.kind == "points":
         raise ValueError(f"{name} needs a grid or structured mesh; {task.name} is a point cloud")
     if name == "deeponet":
@@ -36,7 +37,7 @@ def build(name, task):
     # the authors' configurations use the unified positional encoding on Darcy and Navier-Stokes only
     upos = task.name in ("darcy", "ns")
     if name == "transolver":
-        return Transolver(task, unified_pos=upos)
+        return Transolver(task, unified_pos=upos, **kw)
     if name == "transolver_pp":
-        return Transolver(task, plus=True, unified_pos=upos)
+        return Transolver(task, plus=True, unified_pos=upos, **kw)
     raise KeyError(name)

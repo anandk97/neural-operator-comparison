@@ -50,6 +50,8 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--noise", type=float, default=0.0, help="relative Gaussian noise added to test inputs")
     ap.add_argument("--tag", default="")
+    ap.add_argument("--clip", type=float, default=1.0, help="gradient-norm clipping threshold")
+    ap.add_argument("--arch", default="", help="architecture overrides, e.g. width=256,layers=8,slice_num=32")
     args = ap.parse_args()
 
     torch.manual_seed(args.seed)
@@ -58,7 +60,8 @@ def main():
     torch.backends.cuda.matmul.allow_tf32 = True  # same setting for every model
     torch.backends.cudnn.allow_tf32 = True
     task = load(args.task, ntrain=args.ntrain)
-    model = build(args.model, task).to(dev)
+    arch = {k: int(v) for k, v in (kv.split("=") for kv in args.arch.split(",") if kv)}
+    model = build(args.model, task, **arch).to(dev)
     n_params = sum(p.numel() for p in model.parameters())
     bs = args.batch or BATCH[task.name]
 
@@ -103,7 +106,7 @@ def main():
             loss = rel_l2(pred, u).mean()
             opt.zero_grad(set_to_none=True)
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
             opt.step()
             sched.step()
             tot += loss.item() * len(idx)
@@ -134,7 +137,7 @@ def main():
     name = f"{args.model}_n{args.ntrain}" + (f"_noise{args.noise}" if args.noise else "") + (f"_{args.tag}" if args.tag else "")
     res = {
         "task": task.name, "model": args.model, "ntrain": args.ntrain, "epochs": args.epochs, "seed": args.seed,
-        "noise": args.noise, "params": n_params, "test_rel_l2": errs.mean().item(),
+        "noise": args.noise, "batch": bs, "clip": args.clip, "arch": arch, "params": n_params, "test_rel_l2": errs.mean().item(),
         "test_rel_l2_median": errs.median().item(), "train_seconds": train_s, "infer_ms_per_sample": 1e3 * infer_s,
         "peak_gb": train_peak, "history": history,
     }
