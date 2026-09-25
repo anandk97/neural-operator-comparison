@@ -33,7 +33,9 @@ Work in progress. Results and the write-up will be at https://anandk97.github.io
 uv sync
 uv run python data_fetch.py
 uv run python train.py --task darcy --model fno --epochs 300
-uv run python pinn.py --task burgers --model piratenet --instances 5
+uv run python pinn.py --task burgers --model piratenet --instances 3
+uv run python run_all.py main      # or: ablation, eval, scaling, pinn
+uv run python export_web.py        # results -> web/operators-data.json
 ```
 
 ## Credits

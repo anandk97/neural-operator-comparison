@@ -71,3 +71,6 @@ DeepONet does well there. At 1024–2048 points with narrow waves, it does not.
 - **Robustness,** Shikhman, arXiv:2601.11428 (2026): across 750 trained FNO, DeepONet and CNO models, in-distribution
   accuracy did not predict robustness to shifts in coefficients, boundary conditions, resolution or time horizon.
   Failure patterns depended on both the architecture and the PDE family.
+- **PINN failure modes,** Krishnapriyan et al., NeurIPS 2021, "Characterizing possible failure modes in physics-informed
+  neural networks": PINNs fail on convection-dominated problems and sharp features, and the failure is an
+  optimisation problem rather than a lack of network capacity.
