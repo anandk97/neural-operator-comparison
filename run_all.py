@@ -40,7 +40,9 @@ def queue(which):
         # training; the authors train on the full rollout, which is about 10x the cost.
         cfgs = [("darcy", "transolver", 4, 0.1, "layers=8,width=128,slice_num=64"),
                 ("darcy", "transolver_pp", 4, 0.1, "layers=4,width=128,slice_num=64"),
-                ("ns", "transolver", 2, 1e9, "layers=8,width=256,slice_num=32"),
+                # the authors' NS script has no clipping; with our teacher-forced windows it diverged (NaN at epoch
+                # 118), so this run clips at 0.1 as their other benchmarks do
+                ("ns", "transolver", 2, 0.1, "layers=8,width=256,slice_num=32"),
                 ("ns", "transolver_pp", 4, 1e9, "layers=8,width=256,slice_num=32")]
         for task, m, bs, clip, arch in cfgs:
             yield f"{task}/{m}_n1000_authors.json", ["train.py", "--task", task, "--model", m, "--epochs", "500",
