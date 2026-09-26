@@ -49,7 +49,7 @@ def pre_fix(task, model):
 
 def main():
     data = {"tasks": TASKS, "models": MODELS, "published": PUBLISHED, "main": {}, "scaling": {}, "eval": {},
-            "pinn": {}, "curves": {}, "examples": {}}
+            "pinn": {}, "curves": {}, "examples": {}, "authors": {}}
     for t in TASKS:
         for m in MODELS:
             f = RUNS / t / f"{m}_n1000.json"
@@ -82,6 +82,12 @@ def main():
                         ex["x"] = smp["x"]
                     ex["pred"][m] = [down(a) for a in smp["pred"][:2]]
                 data["eval"].setdefault(t, {})[m] = e
+        for m in ("transolver", "transolver_pp"):  # the authors' training settings (500 epochs, their batch/width)
+            f = RUNS / t / f"{m}_n1000_authors.json"
+            if f.exists():
+                r = json.loads(f.read_text())
+                data["authors"].setdefault(t, {})[m] = {"err": r["test_rel_l2"], "train_min": r["train_seconds"] / 60,
+                                                        "batch": r.get("batch"), "arch": r.get("arch"), "clip": r.get("clip")}
         for m in ("pinn", "piratenet"):
             f = RUNS / t / f"{m}_instances.json"
             if f.exists():
